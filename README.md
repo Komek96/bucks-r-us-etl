@@ -1,5 +1,3 @@
-# bucks-r-us-etl
-
 # Bucks-R-Us ETL & Retail Analytics System
 
 Bucks-R-Us is a fictional multi-location fixed-price discount retailer created as the basis for a data analytics and ETL portfolio project.
