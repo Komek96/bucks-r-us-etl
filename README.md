@@ -81,6 +81,7 @@ The following validation rules are currently implemented:
 | Missing or malformed timestamp | Reject as `INVALID_TIMESTAMP` |
 | Exact duplicate inventory record | Reject both copies as `DUPLICATE_INVENTORY_RECORD` |
 | Conflicting inventory records | Reject both records as `CONFLICTING_INVENTORY_RECORD` |
+| Inventory after store closure | Reject as `INVENTORY_AFTER_STORE_CLOSURE` |
 
 ### Duplicate vs. Conflicting Records
 
@@ -113,6 +114,8 @@ Tests performed so far include:
 - Supplying a missing timestamp.
 - Creating two identical inventory records.
 - Creating two inventory records for the same store, SKU, and timestamp with different quantities.
+- Supplying inventory dated after a store's recorded closure time.
+- Verifying that historical inventory dated before a store's closure remains valid.
 
 After each test, the source data was restored and the pipeline was rerun against the clean dataset to verify that valid records passed validation.
 
@@ -208,12 +211,13 @@ The project is currently in active development. The initial inventory extraction
 - Manually tested each implemented validation rule using deliberately malformed source data.
 - Verified that the pipeline returns to a clean state after test data is corrected.
 - Established Git/GitHub version control for the project.
+- Implemented historical store-closure validation using inventory and store closure timestamps.
 
 ### In Progress / Planned
 
 The next stages of development include:
 
-1. Expand validation and transformation logic, including historical store-status handling.
+~~1. Expand validation and transformation logic, including historical store-status handling.~~
 2. Track source deliveries and processing runs to support idempotency and safe reruns.
 3. Detect late and missing inventory reports.
 4. Persist rejected records and their rejection reasons.
