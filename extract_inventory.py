@@ -7,11 +7,30 @@ STORES_URL =  "https://docs.google.com/spreadsheets/d/1LfF4pfY7aPECnZJHiw0YsY_AF
 inventory = pd.read_csv(SHEET_URL)
 products = pd.read_csv(PRODUCTS_URL)
 stores = pd.read_csv(STORES_URL)
+stores["closed_at"] = pd.to_datetime(
+    stores["closed_at"],
+    errors="coerce"
+)
 parsed_timestamp = pd.to_datetime(
     inventory["inventory_timestamp"],
     errors="coerce"
 )
-
+inventory_with_store = inventory.merge(
+    stores[["store_id", "status", "closed_at"]],
+    on="store_id",
+    how="left"
+)
+inventory_with_store["inventory_timestamp"] = pd.to_datetime(
+    inventory_with_store["inventory_timestamp"],
+    errors="coerce"
+)
+inventory_after_closure = (
+    inventory_with_store["closed_at"].notna()
+    & (
+        inventory_with_store["inventory_timestamp"]
+        >= inventory_with_store["closed_at"]
+    )
+)
 print("\nPRODUCT CATALOG:")
 print(products.to_string(index=False))
 
@@ -19,7 +38,12 @@ print("\nSTORE CATALOG:")
 print(stores.to_string(index=False))
 #Validation Variables
 duplicate_inventory = inventory.duplicated(
-    subset=["store_id", "sku", "inventory_timestamp"],
+    subset=[
+        "store_id",
+        "sku",
+        "quantity_on_hand",
+        "inventory_timestamp"
+    ],
     keep=False
 )
 unknown_store = ~inventory["store_id"].isin(stores["store_id"])
@@ -30,21 +54,6 @@ unknown_sku = (
     inventory["sku"].notna()
     & ~inventory["sku"].isin(products["sku"])
 )
-invalid_row = (
-    invalid_quantity
-    | missing_sku
-    | unknown_sku
-    | unknown_store
-    | invalid_timestamp
-    | duplicate_inventory
-)
-invalid_timestamp = parsed_timestamp.isna()
-valid_inventory = inventory[~invalid_row]
-rejected_inventory = inventory[invalid_row]
-rejected_inventory = rejected_inventory.copy()
-rejected_inventory["rejection_reason"] = ""
-
-#Rejection Rules
 
 conflicting_inventory = (
     inventory.groupby(
@@ -53,15 +62,22 @@ conflicting_inventory = (
     .transform("nunique") > 1
 )
 
-duplicate_inventory = inventory.duplicated(
-    subset=[
-        "store_id",
-        "sku",
-        "quantity_on_hand",
-        "inventory_timestamp"
-    ],
-    keep=False
+invalid_row = (
+    invalid_quantity
+    | missing_sku
+    | unknown_sku
+    | unknown_store
+    | invalid_timestamp
+    | duplicate_inventory
+    | conflicting_inventory
+    | inventory_after_closure
 )
+valid_inventory = inventory[~invalid_row]
+rejected_inventory = inventory[invalid_row]
+rejected_inventory = rejected_inventory.copy()
+rejected_inventory["rejection_reason"] = ""
+
+#Rejection Rules
 
 rejected_inventory.loc[
     rejected_inventory.index.isin(
@@ -100,17 +116,11 @@ rejected_inventory.loc[
 ] = "INVALID_TIMESTAMP"
 
 rejected_inventory.loc[
-    rejected_inventory.duplicated(
-        subset=[
-            "store_id",
-            "sku",
-            "quantity_on_hand",
-            "inventory_timestamp"
-        ],
-        keep=False
+    rejected_inventory.index.isin(
+        inventory_with_store[inventory_after_closure].index
     ),
     "rejection_reason"
-] = "DUPLICATE_INVENTORY_RECORD"
+] = "INVENTORY_AFTER_STORE_CLOSURE"
 
 print("VALID INVENTORY:")
 print(valid_inventory.to_string(index=False))
@@ -128,3 +138,10 @@ print("\nDUPLICATE INVENTORY RECORDS:")
 print(inventory[duplicate_inventory].to_string(index=False))
 print("\nCONFLICTING INVENTORY RECORDS:")
 print(inventory[conflicting_inventory].to_string(index=False))
+print("\nINVENTORY WITH STORE STATUS:")
+print(inventory_with_store.to_string(index=False))
+print("\nINVENTORY AFTER STORE CLOSURE:")
+print(
+    inventory_with_store[inventory_after_closure]
+    .to_string(index=False)
+)
