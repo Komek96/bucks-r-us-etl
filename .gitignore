@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Runtime output
+pipeline_output.txt
+delivery_history.json
+
+# Local secrets
+.env
+.env.*
+!.env.example

@@ -1,12 +1,36 @@
 import pandas as pd
+import hashlib
+import json
+import sys
+
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1LfF4pfY7aPECnZJHiw0YsY_AF7WRoNnB1PuFGnJ6npg/export?format=csv"
 PRODUCTS_URL = "https://docs.google.com/spreadsheets/d/1LfF4pfY7aPECnZJHiw0YsY_AF7WRoNnB1PuFGnJ6npg/export?format=csv&gid=2125665780"
 STORES_URL =  "https://docs.google.com/spreadsheets/d/1LfF4pfY7aPECnZJHiw0YsY_AF7WRoNnB1PuFGnJ6npg/export?format=csv&gid=1763900964"
 
 inventory = pd.read_csv(SHEET_URL)
+
+inventory_csv = inventory.to_csv(index=False)
+
+delivery_hash = hashlib.sha256(
+    inventory_csv.encode("utf-8")
+).hexdigest()
+print(f"Inventory delivery SHA-256: {delivery_hash}")
+# Load previously processed inventory deliveries
+with open("delivery_history.json", "r") as file:
+    delivery_history = json.load(file)
+
+processed_deliveries = delivery_history["processed_deliveries"]
+if delivery_hash in processed_deliveries:
+    print("DUPLICATE DELIVERY DETECTED")
+    print("Skipping previously processed inventory delivery.")
+    sys.exit(0)
+else:
+    print("NEW DELIVERY DETECTED")
+    
 products = pd.read_csv(PRODUCTS_URL)
 stores = pd.read_csv(STORES_URL)
+
 stores["closed_at"] = pd.to_datetime(
     stores["closed_at"],
     errors="coerce"

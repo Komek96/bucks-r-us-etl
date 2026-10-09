@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: bucks-r-us-postgres
+    environment:
+      POSTGRES_USER: bru_user
+      POSTGRES_PASSWORD: bru_dev_password
+      POSTGRES_DB: bucks_r_us
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
