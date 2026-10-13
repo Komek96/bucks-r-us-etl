@@ -17,11 +17,19 @@ delivery_hash = hashlib.sha256(
     inventory_csv.encode("utf-8")
 ).hexdigest()
 print(f"Inventory delivery SHA-256: {delivery_hash}")
+with get_connection() as conn:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) FROM delivery_history WHERE delivery_hash = %s",
+            (delivery_hash,)
+        )
+        delivery_exists = cursor.fetchone()[0]
+print(f"Delivery found in PostgreSQL: {delivery_exists}")
 with open("delivery_history.json", "r") as file:
     delivery_history = json.load(file)
 processed_deliveries = delivery_history["processed_deliveries"]
 print(f"Previously processed deliveries: {len(processed_deliveries)}")
-if delivery_hash in processed_deliveries:
+if delivery_exists == 1:
     print("DUPLICATE DELIVERY DETECTED")
     sys.exit(0)
 else:
@@ -85,7 +93,19 @@ with get_connection() as conn:
             else:
                 skipped_count += 1
                 print(f"Skipped existing inventory: {item['store_id']} - {item['sku']}")
-                
+
+        cursor.execute(
+            """
+            INSERT INTO delivery_history (
+                delivery_hash,
+                records_inserted,
+                records_skipped
+            )
+            VALUES (%s, %s, %s)
+            ON CONFLICT (delivery_hash) DO NOTHING;
+            """,
+            (delivery_hash, inserted_count, skipped_count)
+        )
 
 print(f"\nTotal new inventory records inserted: {inserted_count}")
 print(f"Total existing inventory records skipped: {skipped_count}")
