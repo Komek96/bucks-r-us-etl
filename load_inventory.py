@@ -1,6 +1,5 @@
 
 import sys
-import json
 import hashlib
 import pandas as pd
 from database import get_connection
@@ -25,10 +24,6 @@ with get_connection() as conn:
         )
         delivery_exists = cursor.fetchone()[0]
 print(f"Delivery found in PostgreSQL: {delivery_exists}")
-with open("delivery_history.json", "r") as file:
-    delivery_history = json.load(file)
-processed_deliveries = delivery_history["processed_deliveries"]
-print(f"Previously processed deliveries: {len(processed_deliveries)}")
 if delivery_exists == 1:
     print("DUPLICATE DELIVERY DETECTED")
     sys.exit(0)
@@ -109,9 +104,4 @@ with get_connection() as conn:
 
 print(f"\nTotal new inventory records inserted: {inserted_count}")
 print(f"Total existing inventory records skipped: {skipped_count}")
-processed_deliveries.append(delivery_hash)
-print("Delivery fingerprint prepared for registration.")
-delivery_history["processed_deliveries"] = processed_deliveries
-with open("delivery_history.json", "w") as file:
-    json.dump(delivery_history, file, indent=2)
-print("Delivery fingerprint successfully registered.")
+print("Delivery fingerprint successfully registered in PostgreSQL.")
