@@ -1,6 +1,7 @@
 
 import sys
 import hashlib
+import logging
 import pandas as pd
 from database import get_connection
 from extract_inventory import (
@@ -10,12 +11,19 @@ from extract_inventory import (
     STORES_URL
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 inventory = pd.read_csv(SHEET_URL)
 inventory_csv = inventory.to_csv(index=False)
 delivery_hash = hashlib.sha256(
     inventory_csv.encode("utf-8")
 ).hexdigest()
-print(f"Inventory delivery SHA-256: {delivery_hash}")
+logger.info("Inventory delivery SHA-256: %s", delivery_hash)
 with get_connection() as conn:
     with conn.cursor() as cursor:
         cursor.execute(
@@ -23,18 +31,18 @@ with get_connection() as conn:
             (delivery_hash,)
         )
         delivery_exists = cursor.fetchone()[0]
-print(f"Delivery found in PostgreSQL: {delivery_exists}")
+logger.info("Delivery found in PostgreSQL: %s", delivery_exists)
 if delivery_exists == 1:
-    print("DUPLICATE DELIVERY DETECTED")
+    logger.warning("DUPLICATE DELIVERY DETECTED")
     sys.exit(0)
 else:
-    print("NEW DELIVERY DETECTED")
+    logger.info("NEW DELIVERY DETECTED")
 products = pd.read_csv(PRODUCTS_URL)
 stores = pd.read_csv(STORES_URL)
 
-print(f"Downloaded {len(inventory)} inventory records.")
-print(f"Downloaded {len(products)} products.")
-print(f"Downloaded {len(stores)} stores.")
+logger.info("Downloaded %s inventory records.", len(inventory))
+logger.info("Downloaded %s products.", len(products))
+logger.info("Downloaded %s stores.", len(stores))
 
 #Inventory Validation
 
@@ -44,8 +52,8 @@ valid_inventory, rejected_inventory = validate_inventory(
     stores
 )
 
-print(f"Valid inventory records: {len(valid_inventory)}")
-print(f"Rejected inventory records: {len(rejected_inventory)}")
+logger.info("Valid inventory records: %s", len(valid_inventory))
+logger.warning("Rejected inventory records: %s", len(rejected_inventory))
 
 valid_inventory = valid_inventory.copy()
 
