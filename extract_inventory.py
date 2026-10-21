@@ -88,6 +88,13 @@ def validate_inventory(inventory, products, stores):
 
     rejected_inventory.loc[
         rejected_inventory.index.isin(
+            inventory[duplicate_inventory].index
+        ),
+        "rejection_reason"
+    ] = "DUPLICATE_INVENTORY_RECORD"
+
+    rejected_inventory.loc[
+        rejected_inventory.index.isin(
             inventory[conflicting_inventory].index
         ),
         "rejection_reason"
