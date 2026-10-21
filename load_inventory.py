@@ -61,8 +61,8 @@ valid_inventory["inventory_timestamp"] = pd.to_datetime(
     valid_inventory["inventory_timestamp"]
 )
 
-print("\nValidated inventory ready for PostgreSQL:")
-print(valid_inventory.to_string(index=False))
+logger.info("Validated inventory ready for PostgreSQL:")
+logger.info("\n%s", valid_inventory.to_string(index=False))
 
 inserted_count = 0
 skipped_count = 0
@@ -92,10 +92,10 @@ with get_connection() as conn:
 
             if cursor.rowcount == 1:
                 inserted_count += 1
-                print(f"Inserted inventory: {item['store_id']} - {item['sku']}")
+                logger.info("Inserted inventory: %s - %s", item["store_id"], item["sku"])
             else:
                 skipped_count += 1
-                print(f"Skipped existing inventory: {item['store_id']} - {item['sku']}")
+                logger.info("Skipped existing inventory: %s - %s", item["store_id"], item["sku"])
 
         cursor.execute(
             """
@@ -110,6 +110,6 @@ with get_connection() as conn:
             (delivery_hash, inserted_count, skipped_count)
         )
 
-print(f"\nTotal new inventory records inserted: {inserted_count}")
-print(f"Total existing inventory records skipped: {skipped_count}")
-print("Delivery fingerprint successfully registered in PostgreSQL.")
+logger.info("Total new inventory records inserted: %s", inserted_count)
+logger.info("Total existing inventory records skipped: %s", skipped_count)
+logger.info("Delivery fingerprint successfully registered in PostgreSQL.")
