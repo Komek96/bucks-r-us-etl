@@ -53,7 +53,10 @@ valid_inventory, rejected_inventory = validate_inventory(
 )
 
 logger.info("Valid inventory records: %s", len(valid_inventory))
-logger.warning("Rejected inventory records: %s", len(rejected_inventory))
+if len(rejected_inventory) > 0:
+    logger.warning("Rejected inventory records: %s", len(rejected_inventory))
+else:
+    logger.info("Rejected inventory records: 0")
 
 valid_inventory = valid_inventory.copy()
 
