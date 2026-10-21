@@ -18,101 +18,113 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-inventory = pd.read_csv(SHEET_URL)
-inventory_csv = inventory.to_csv(index=False)
-delivery_hash = hashlib.sha256(
-    inventory_csv.encode("utf-8")
-).hexdigest()
-logger.info("Inventory delivery SHA-256: %s", delivery_hash)
-with get_connection() as conn:
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "SELECT COUNT(*) FROM delivery_history WHERE delivery_hash = %s",
-            (delivery_hash,)
-        )
-        delivery_exists = cursor.fetchone()[0]
-logger.info("Delivery found in PostgreSQL: %s", delivery_exists)
-if delivery_exists == 1:
-    logger.warning("DUPLICATE DELIVERY DETECTED")
-    sys.exit(0)
-else:
-    logger.info("NEW DELIVERY DETECTED")
-products = pd.read_csv(PRODUCTS_URL)
-stores = pd.read_csv(STORES_URL)
 
-logger.info("Downloaded %s inventory records.", len(inventory))
-logger.info("Downloaded %s products.", len(products))
-logger.info("Downloaded %s stores.", len(stores))
 
-#Inventory Validation
+def calculate_delivery_hash(inventory):
+    """Calculate a SHA-256 fingerprint for an inventory delivery."""
+    inventory_csv = inventory.to_csv(index=False)
+    return hashlib.sha256(
+        inventory_csv.encode("utf-8")
+    ).hexdigest()
 
-valid_inventory, rejected_inventory = validate_inventory(
-    inventory,
-    products,
-    stores
-)
 
-logger.info("Valid inventory records: %s", len(valid_inventory))
-if len(rejected_inventory) > 0:
-    logger.warning("Rejected inventory records: %s", len(rejected_inventory))
-else:
-    logger.info("Rejected inventory records: 0")
+def main():
+    inventory = pd.read_csv(SHEET_URL)
+    delivery_hash = calculate_delivery_hash(inventory)
+    logger.info("Inventory delivery SHA-256: %s", delivery_hash)
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM delivery_history WHERE delivery_hash = %s",
+                (delivery_hash,)
+            )
+            delivery_exists = cursor.fetchone()[0]
+    logger.info("Delivery found in PostgreSQL: %s", delivery_exists)
+    if delivery_exists == 1:
+        logger.warning("DUPLICATE DELIVERY DETECTED")
+        sys.exit(0)
+    else:
+        logger.info("NEW DELIVERY DETECTED")
+    products = pd.read_csv(PRODUCTS_URL)
+    stores = pd.read_csv(STORES_URL)
 
-valid_inventory = valid_inventory.copy()
+    logger.info("Downloaded %s inventory records.", len(inventory))
+    logger.info("Downloaded %s products.", len(products))
+    logger.info("Downloaded %s stores.", len(stores))
 
-valid_inventory["inventory_timestamp"] = pd.to_datetime(
-    valid_inventory["inventory_timestamp"]
-)
+    #Inventory Validation
 
-logger.info("Validated inventory ready for PostgreSQL:")
-logger.info("\n%s", valid_inventory.to_string(index=False))
+    valid_inventory, rejected_inventory = validate_inventory(
+        inventory,
+        products,
+        stores
+    )
 
-inserted_count = 0
-skipped_count = 0
+    logger.info("Valid inventory records: %s", len(valid_inventory))
+    if len(rejected_inventory) > 0:
+        logger.warning("Rejected inventory records: %s", len(rejected_inventory))
+    else:
+        logger.info("Rejected inventory records: 0")
 
-with get_connection() as conn:
-    with conn.cursor() as cursor:
-        for _, item in valid_inventory.iterrows():
+    valid_inventory = valid_inventory.copy()
+
+    valid_inventory["inventory_timestamp"] = pd.to_datetime(
+        valid_inventory["inventory_timestamp"]
+    )
+
+    logger.info("Validated inventory ready for PostgreSQL:")
+    logger.info("\n%s", valid_inventory.to_string(index=False))
+
+    inserted_count = 0
+    skipped_count = 0
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            for _, item in valid_inventory.iterrows():
+                cursor.execute(
+                    """
+                    INSERT INTO inventory (
+                        store_id,
+                        sku,
+                        quantity_on_hand,
+                        inventory_timestamp
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (store_id, sku, inventory_timestamp)
+                    DO NOTHING;
+                    """,
+                    (
+                        item["store_id"],
+                        item["sku"],
+                        int(item["quantity_on_hand"]),
+                        item["inventory_timestamp"].to_pydatetime()
+                    )
+                )
+
+                if cursor.rowcount == 1:
+                    inserted_count += 1
+                    logger.info("Inserted inventory: %s - %s", item["store_id"], item["sku"])
+                else:
+                    skipped_count += 1
+                    logger.info("Skipped existing inventory: %s - %s", item["store_id"], item["sku"])
+
             cursor.execute(
                 """
-                INSERT INTO inventory (
-                    store_id,
-                    sku,
-                    quantity_on_hand,
-                    inventory_timestamp
+                INSERT INTO delivery_history (
+                    delivery_hash,
+                    records_inserted,
+                    records_skipped
                 )
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (store_id, sku, inventory_timestamp)
-                DO NOTHING;
+                VALUES (%s, %s, %s)
+                ON CONFLICT (delivery_hash) DO NOTHING;
                 """,
-                (
-                    item["store_id"],
-                    item["sku"],
-                    int(item["quantity_on_hand"]),
-                    item["inventory_timestamp"].to_pydatetime()
-                )
+                (delivery_hash, inserted_count, skipped_count)
             )
 
-            if cursor.rowcount == 1:
-                inserted_count += 1
-                logger.info("Inserted inventory: %s - %s", item["store_id"], item["sku"])
-            else:
-                skipped_count += 1
-                logger.info("Skipped existing inventory: %s - %s", item["store_id"], item["sku"])
+    logger.info("Total new inventory records inserted: %s", inserted_count)
+    logger.info("Total existing inventory records skipped: %s", skipped_count)
+    logger.info("Delivery fingerprint successfully registered in PostgreSQL.")
 
-        cursor.execute(
-            """
-            INSERT INTO delivery_history (
-                delivery_hash,
-                records_inserted,
-                records_skipped
-            )
-            VALUES (%s, %s, %s)
-            ON CONFLICT (delivery_hash) DO NOTHING;
-            """,
-            (delivery_hash, inserted_count, skipped_count)
-        )
 
-logger.info("Total new inventory records inserted: %s", inserted_count)
-logger.info("Total existing inventory records skipped: %s", skipped_count)
-logger.info("Delivery fingerprint successfully registered in PostgreSQL.")
+if __name__ == "__main__":
+    main()
