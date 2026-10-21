@@ -28,19 +28,24 @@ def calculate_delivery_hash(inventory):
     ).hexdigest()
 
 
-def main():
-    inventory = pd.read_csv(SHEET_URL)
-    delivery_hash = calculate_delivery_hash(inventory)
-    logger.info("Inventory delivery SHA-256: %s", delivery_hash)
+def delivery_exists(delivery_hash):
+    """Return the number of matching deliveries in PostgreSQL."""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT COUNT(*) FROM delivery_history WHERE delivery_hash = %s",
                 (delivery_hash,)
             )
-            delivery_exists = cursor.fetchone()[0]
-    logger.info("Delivery found in PostgreSQL: %s", delivery_exists)
-    if delivery_exists == 1:
+            return cursor.fetchone()[0]
+
+
+def main():
+    inventory = pd.read_csv(SHEET_URL)
+    delivery_hash = calculate_delivery_hash(inventory)
+    logger.info("Inventory delivery SHA-256: %s", delivery_hash)
+    existing_delivery = delivery_exists(delivery_hash)
+    logger.info("Delivery found in PostgreSQL: %s", existing_delivery)
+    if existing_delivery == 1:
         logger.warning("DUPLICATE DELIVERY DETECTED")
         sys.exit(0)
     else:
