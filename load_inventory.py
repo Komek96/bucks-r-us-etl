@@ -39,47 +39,8 @@ def delivery_exists(delivery_hash):
             return cursor.fetchone()[0]
 
 
-def main():
-    inventory = pd.read_csv(SHEET_URL)
-    delivery_hash = calculate_delivery_hash(inventory)
-    logger.info("Inventory delivery SHA-256: %s", delivery_hash)
-    existing_delivery = delivery_exists(delivery_hash)
-    logger.info("Delivery found in PostgreSQL: %s", existing_delivery)
-    if existing_delivery == 1:
-        logger.warning("DUPLICATE DELIVERY DETECTED")
-        sys.exit(0)
-    else:
-        logger.info("NEW DELIVERY DETECTED")
-    products = pd.read_csv(PRODUCTS_URL)
-    stores = pd.read_csv(STORES_URL)
-
-    logger.info("Downloaded %s inventory records.", len(inventory))
-    logger.info("Downloaded %s products.", len(products))
-    logger.info("Downloaded %s stores.", len(stores))
-
-    #Inventory Validation
-
-    valid_inventory, rejected_inventory = validate_inventory(
-        inventory,
-        products,
-        stores
-    )
-
-    logger.info("Valid inventory records: %s", len(valid_inventory))
-    if len(rejected_inventory) > 0:
-        logger.warning("Rejected inventory records: %s", len(rejected_inventory))
-    else:
-        logger.info("Rejected inventory records: 0")
-
-    valid_inventory = valid_inventory.copy()
-
-    valid_inventory["inventory_timestamp"] = pd.to_datetime(
-        valid_inventory["inventory_timestamp"]
-    )
-
-    logger.info("Validated inventory ready for PostgreSQL:")
-    logger.info("\n%s", valid_inventory.to_string(index=False))
-
+def insert_inventory_records(valid_inventory, delivery_hash):
+    """Insert inventory and register its delivery in one transaction."""
     inserted_count = 0
     skipped_count = 0
 
@@ -125,6 +86,54 @@ def main():
                 """,
                 (delivery_hash, inserted_count, skipped_count)
             )
+
+    return inserted_count, skipped_count
+
+
+def main():
+    inventory = pd.read_csv(SHEET_URL)
+    delivery_hash = calculate_delivery_hash(inventory)
+    logger.info("Inventory delivery SHA-256: %s", delivery_hash)
+    existing_delivery = delivery_exists(delivery_hash)
+    logger.info("Delivery found in PostgreSQL: %s", existing_delivery)
+    if existing_delivery == 1:
+        logger.warning("DUPLICATE DELIVERY DETECTED")
+        sys.exit(0)
+    else:
+        logger.info("NEW DELIVERY DETECTED")
+    products = pd.read_csv(PRODUCTS_URL)
+    stores = pd.read_csv(STORES_URL)
+
+    logger.info("Downloaded %s inventory records.", len(inventory))
+    logger.info("Downloaded %s products.", len(products))
+    logger.info("Downloaded %s stores.", len(stores))
+
+    #Inventory Validation
+
+    valid_inventory, rejected_inventory = validate_inventory(
+        inventory,
+        products,
+        stores
+    )
+
+    logger.info("Valid inventory records: %s", len(valid_inventory))
+    if len(rejected_inventory) > 0:
+        logger.warning("Rejected inventory records: %s", len(rejected_inventory))
+    else:
+        logger.info("Rejected inventory records: 0")
+
+    valid_inventory = valid_inventory.copy()
+
+    valid_inventory["inventory_timestamp"] = pd.to_datetime(
+        valid_inventory["inventory_timestamp"]
+    )
+
+    logger.info("Validated inventory ready for PostgreSQL:")
+    logger.info("\n%s", valid_inventory.to_string(index=False))
+
+    inserted_count, skipped_count = insert_inventory_records(
+        valid_inventory, delivery_hash
+    )
 
     logger.info("Total new inventory records inserted: %s", inserted_count)
     logger.info("Total existing inventory records skipped: %s", skipped_count)
