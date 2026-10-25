@@ -125,3 +125,52 @@ def test_mixed_inventory_inserts_and_skips():
     history_query = cursor.execute.call_args_list[3]
     assert "INSERT INTO delivery_history" in history_query.args[0]
     assert history_query.args[1] == ("mixed-delivery-hash", 2, 1)
+
+
+def test_inventory_insert_propagates_database_failure():
+    """A failed inventory insert must propagate its database error."""
+
+    import pytest
+
+    inventory = pd.DataFrame({
+        "store_id": ["BRU-0001", "BRU-0002"],
+        "sku": ["SKU-20481", "SKU-20482"],
+        "quantity_on_hand": [12, 8],
+        "inventory_timestamp": pd.to_datetime([
+            "2026-10-05 08:00:00",
+            "2026-10-05 08:00:00",
+        ]),
+    })
+
+    connection = MagicMock()
+    cursor = (
+        connection.__enter__.return_value
+        .cursor.return_value.__enter__.return_value
+    )
+
+    cursor.rowcount = 1
+    cursor.execute.side_effect = [
+        None,
+        RuntimeError("Simulated PostgreSQL insertion failure"),
+    ]
+
+    with patch("load_inventory.get_connection", return_value=connection):
+        with pytest.raises(
+            RuntimeError,
+            match="Simulated PostgreSQL insertion failure"
+        ):
+            insert_inventory_records(
+                inventory, "failed-delivery-hash"
+            )
+
+    assert cursor.execute.call_count == 2
+
+    # The delivery history must not be registered after the failure.
+    assert all(
+        "INSERT INTO delivery_history" not in call.args[0]
+        for call in cursor.execute.call_args_list
+    )
+
+    # The connection context manager receives the exception.
+    assert connection.__exit__.call_count == 1
+    assert connection.__exit__.call_args.args[0] is RuntimeError
