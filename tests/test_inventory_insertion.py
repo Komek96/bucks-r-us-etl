@@ -174,3 +174,55 @@ def test_inventory_insert_propagates_database_failure():
     # The connection context manager receives the exception.
     assert connection.__exit__.call_count == 1
     assert connection.__exit__.call_args.args[0] is RuntimeError
+
+
+def test_delivery_history_failure_propagates():
+    """A failed delivery history insert must abort the transaction."""
+
+    import pytest
+
+    inventory = pd.DataFrame({
+        "store_id": ["BRU-0001", "BRU-0002"],
+        "sku": ["SKU-20481", "SKU-20482"],
+        "quantity_on_hand": [12, 8],
+        "inventory_timestamp": pd.to_datetime([
+            "2026-10-05 08:00:00",
+            "2026-10-05 08:00:00",
+        ]),
+    })
+
+    connection = MagicMock()
+    cursor = (
+        connection.__enter__.return_value
+        .cursor.return_value.__enter__.return_value
+    )
+
+    cursor.rowcount = 1
+    cursor.execute.side_effect = [
+        None,
+        None,
+        RuntimeError("Simulated delivery history failure"),
+    ]
+
+    with patch("load_inventory.get_connection", return_value=connection):
+        with pytest.raises(
+            RuntimeError,
+            match="Simulated delivery history failure"
+        ):
+            insert_inventory_records(
+                inventory, "failed-history-hash"
+            )
+
+    assert cursor.execute.call_count == 3
+
+    assert all(
+        "INSERT INTO inventory" in call.args[0]
+        for call in cursor.execute.call_args_list[:2]
+    )
+
+    history_query = cursor.execute.call_args_list[2]
+    assert "INSERT INTO delivery_history" in history_query.args[0]
+    assert history_query.args[1] == ("failed-history-hash", 2, 0)
+
+    assert connection.__exit__.call_count == 1
+    assert connection.__exit__.call_args.args[0] is RuntimeError
