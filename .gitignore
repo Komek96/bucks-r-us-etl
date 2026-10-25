@@ -10,3 +10,5 @@ delivery_history.json
 .env
 .env.*
 !.env.example
+# Generated analytics reports
+reports/output/
