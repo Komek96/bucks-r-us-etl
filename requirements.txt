@@ -2,3 +2,5 @@ pandas
 openpyxl
 psycopg[binary]
 pytest
+streamlit
+plotly
