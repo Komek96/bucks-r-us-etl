@@ -10,10 +10,10 @@ def main():
     print(f"Found {len(report_files)} SQL reports.")
 
     for report_path in report_files:
-        print(f"\\nRunning {report_path.name}...")
+        print(f"\nRunning {report_path.name}...")
         run_report(report_path.name)
 
-    print(f"\\nCompleted {len(report_files)} reports.")
+    print(f"\nCompleted {len(report_files)} reports.")
 
 
 if __name__ == "__main__":

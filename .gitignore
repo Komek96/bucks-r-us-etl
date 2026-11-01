@@ -12,3 +12,6 @@ delivery_history.json
 !.env.example
 # Generated analytics reports
 reports/output/
+
+# Generated operational logs
+logs/
