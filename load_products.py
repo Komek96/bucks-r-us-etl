@@ -20,7 +20,19 @@ with get_connection() as conn:
                 """
                 INSERT INTO products (sku, product_name, category, status)
                 VALUES (%s, %s, %s, %s)
-                ON CONFLICT (sku) DO NOTHING;
+                ON CONFLICT (sku) DO UPDATE SET
+                    product_name = EXCLUDED.product_name,
+                    category = EXCLUDED.category,
+                    status = EXCLUDED.status
+                WHERE (
+                    products.product_name,
+                    products.category,
+                    products.status
+                ) IS DISTINCT FROM (
+                    EXCLUDED.product_name,
+                    EXCLUDED.category,
+                    EXCLUDED.status
+                );
                 """,
                 (
                     product["sku"],
