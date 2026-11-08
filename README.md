@@ -2,7 +2,7 @@
 
 Bucks-R-Us is a fictional multi-location fixed-price discount retailer created as the basis for a data analytics and ETL portfolio project.
 
-The goal of the project is to build a reproducible data pipeline that extracts operational retail data from multiple sources, validates and transforms that data, loads trustworthy records into an analytical database, and ultimately supports analysis of product demand and inventory needs across store locations.
+Bucks-R-Us implements an end-to-end retail inventory ETL workflow. It extracts product, store, and inventory data from Google Sheets, validates operational records, loads them into PostgreSQL, and generates SQL analytics for an interactive Streamlit dashboard. Sales-demand analysis remains planned.
 
 ## Business Problem
 
@@ -184,115 +184,170 @@ This provides an audit trail and makes data-quality failures diagnosable rather 
 
 ### Idempotency
 
-The pipeline is intended to be safe to rerun.
+The pipeline supports safe reruns. Inventory deliveries are identified by SHA-256 fingerprints and recorded in PostgreSQL. Previously processed deliveries are detected and skipped without duplicating inventory records.
 
-Repeated processing of the same successfully processed delivery should not duplicate or corrupt analytical data. Duplicate file/delivery detection will be added as the ingestion layer develops.
+Product and store catalogs use conditional PostgreSQL upserts. An end-to-end rerun verified that all four database tables retained their original contents.
 
 ## Current Project Status
 
-The project is currently in active development. The initial inventory extraction and validation layer is operational.
+Bucks-R-Us is a functioning retail inventory ETL and analytics
+system suitable for presentation as a technical portfolio project.
+Additional operational capabilities remain on the roadmap.
 
-### Completed
+### Implemented Features
 
-- Created the Bucks-R-Us fictional retail business and defined the initial analytics problem.
-- Defined identifiers and schemas for stores, products, inventory, and planned sales data.
-- Created separate inventory, product, and store source datasets.
-- Connected Python directly to the current Google Sheets data sources.
-- Implemented inventory extraction using Python and pandas.
-- Implemented reference validation against the product and store catalogs.
-- Implemented detection and rejection of:
-  - Negative quantities.
-  - Missing SKUs.
-  - Unknown SKUs.
-  - Unknown stores.
-  - Missing or malformed timestamps.
-  - Exact duplicate inventory records.
-  - Conflicting inventory records.
-- Manually tested each implemented validation rule using deliberately malformed source data.
-- Verified that the pipeline returns to a clean state after test data is corrected.
-- Established Git/GitHub version control for the project.
-- Implemented historical store-closure validation using inventory and store closure timestamps.
+- Google Sheets extraction for products, stores, and inventory.
+- Inventory data-quality validation and reference checks.
+- PostgreSQL persistence with transactional loading.
+- Product and store synchronization using conditional upserts.
+- SHA-256 inventory delivery tracking and duplicate prevention.
+- Historical inventory validation for closed stores.
+- Four-stage automated ETL and reporting pipeline.
+- Five SQL analytics reports exported to CSV.
+- Interactive Streamlit dashboard with Plotly visualizations.
+- Persistent subprocess output and failure logging.
+- Automatic log rotation and owner-only log permissions.
+- Automated pytest regression and database integration tests.
+- 51 passing tests in the latest full regression run.
 
-### In Progress / Planned
+### Planned Enhancements
 
-The next stages of development include:
+- Sales transaction and receipt-item ingestion.
+- Sales-demand analytics across stores and product categories.
+- Automated missing and late inventory delivery alerts.
+- Persistent storage and resolution tracking of rejected records.
+- Unattended scheduled pipeline execution.
+- Fully documented clean-environment provisioning.
 
-~~1. Expand validation and transformation logic, including historical store-status handling.~~
-2. Track source deliveries and processing runs to support idempotency and safe reruns.
-3. Detect late and missing inventory reports.
-4. Persist rejected records and their rejection reasons.
-5. Add sales transaction ingestion.
-6. Introduce PostgreSQL as the analytical data store.
-7. Design the analytical schema for sales, products, stores, dates, and inventory snapshots.
-8. Load validated data into the analytical database.
-9. Build SQL analyses around store-level product demand and inventory behavior.
-10. Add pipeline logging, run statistics, failure reporting, and data-freshness monitoring.
-11. Test operational failures such as unavailable sources, schema changes, interrupted processing, and database outages.
-12. Make the complete project reproducible from a clean environment.
+These planned features are not represented as implemented.
 
-## Technology Used So Far
+## Analytics Reports
 
-- **Python** — pipeline and validation logic.
-- **pandas** — data extraction, transformation, and validation.
-- **Google Sheets / CSV exports** — current development data sources.
-- **Git** — source control.
-- **GitHub** — remote repository and project history.
-- **GitHub Codespaces** — cloud-based development environment.
+The system generates five SQL-based inventory reports:
 
-Additional technologies such as PostgreSQL will be introduced when the pipeline reaches the appropriate stage rather than being added solely for the sake of increasing the technology stack.
+1. **Low Stock Report** — identifies low inventory levels.
+2. **Store Inventory Summary** — summarizes stock by location.
+3. **Product Inventory Summary** — aggregates stock by SKU.
+4. **Closed Store Inventory** — examines historical records.
+5. **Closed Store Reconciliation** — identifies recorded stock
+   requiring operational review after store closure.
 
-## Project Goal
+Reports are based on inventory snapshots, not sales transactions.
 
-The finished project should demonstrate an end-to-end path from imperfect operational data to trustworthy analytical information:
+## Technology Stack
 
-**Source Data → Extraction → Validation & Transformation → PostgreSQL → SQL Analytics**
+- **Python** — extraction, validation, loading, and automation.
+- **pandas** — source data processing.
+- **PostgreSQL** — relational data storage and delivery tracking.
+- **psycopg** — Python/PostgreSQL integration.
+- **SQL** — retail inventory analytics.
+- **Docker Compose** — PostgreSQL service management.
+- **Streamlit** — interactive analytics interface.
+- **Plotly** — data visualization.
+- **pytest** — unit, regression, and integration testing.
+- **Google Sheets / CSV** — operational data sources.
+- **Git / GitHub** — source and version control.
+- **GitHub Codespaces** — development environment.
 
-The final system should be reproducible, safe to rerun, capable of identifying bad data, and able to explain what happened when processing fails.
+## System Architecture
 
-Most importantly, the resulting data should support useful analysis of how product demand and inventory needs differ across Bucks-R-Us locations.
+~~~text
+Google Sheets
+     |
+     v
+Product and Store Synchronization
+     |
+     v
+Inventory Extraction and Validation
+     |
+     v
+PostgreSQL and Delivery Tracking
+     |
+     v
+SQL Analytics Reports
+     |
+     v
+Streamlit Dashboard
+~~~
 
-## Running the Current Project
+The automation runner stops on failed stages and preserves
+diagnostic information in rotating operational logs.
 
-### Requirements
+## Running the Project
 
-- Python 3
-- Git
-- Internet access to retrieve the current Google Sheets source data
+These instructions assume the PostgreSQL schema and database
+credentials have already been configured.
 
-Install the Python dependencies with:
+### Install Dependencies
 
-```bash
-pip install -r requirements.txt
-```
+~~~bash
+python3 -m pip install -r requirements.txt
+~~~
 
-### Run the Inventory Pipeline
+### Start PostgreSQL
 
-From the project root directory:
+~~~bash
+docker compose up -d postgres
+~~~
 
-```bash
-python extract_inventory.py
-```
+### Configure Database Credentials
 
-The script currently:
+In the configured development environment:
 
-1. Extracts inventory data from the inventory source.
-2. Extracts the product catalog.
-3. Extracts the store catalog.
-4. Validates incoming inventory records.
-5. Separates valid records from rejected records.
-6. Assigns rejection reasons to invalid records.
-7. Displays diagnostic information for the current pipeline run.
+~~~bash
+export POSTGRES_PASSWORD="$(
+    docker compose exec -T postgres printenv POSTGRES_PASSWORD
+)"
+~~~
 
-Example rejection reasons include:
+Credentials should never be committed to Git.
 
-```text
-NEGATIVE_QUANTITY
-MISSING_SKU
-UNKNOWN_SKU
-UNKNOWN_STORE
-INVALID_TIMESTAMP
-DUPLICATE_INVENTORY_RECORD
-CONFLICTING_INVENTORY_RECORD
-```
+### Preview Pipeline Execution
 
-> **Note:** The project is under active development. The current script demonstrates the extraction and validation portion of the pipeline. Database persistence, automated ingestion tracking, sales ingestion, and analytical reporting have not yet been implemented.
+~~~bash
+python3 automation/run_pipeline.py --dry-run
+~~~
+
+### Run the ETL Pipeline
+
+~~~bash
+python3 automation/run_pipeline.py
+~~~
+
+This synchronizes catalogs, processes inventory deliveries,
+and regenerates the five analytics reports.
+
+### Launch the Dashboard
+
+~~~bash
+streamlit run dashboard/app.py
+~~~
+
+### Run Automated Tests
+
+~~~bash
+python3 -m pytest tests/ -v
+~~~
+
+Database integration tests require the isolated test database.
+
+## Operational Logging
+
+The ETL runner records pipeline stage events, subprocess output,
+and exception details in `logs/pipeline.log`.
+
+Logs rotate automatically and are excluded from Git.
+
+The log directory uses owner-only permissions (`700`), and
+operational log files use owner-only read/write permissions (`600`).
+
+## Development Scope
+
+Bucks-R-Us is a fictional retail business developed as a
+data engineering and analytics portfolio project.
+
+Its implemented capabilities focus on inventory visibility,
+data integrity, and store-level operational reporting.
+
+Sales analytics, missing-delivery alerts, and unattended
+scheduling remain planned enhancements.
