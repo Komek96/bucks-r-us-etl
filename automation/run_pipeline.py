@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 import subprocess
 import sys
@@ -21,10 +22,46 @@ PIPELINE_STEPS = [
 ]
 
 
+class SecureRotatingFileHandler(RotatingFileHandler):
+    """Create rotating log files with owner-only permissions."""
+
+    def _open(self):
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_APPEND
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+
+        descriptor = os.open(
+            self.baseFilename,
+            flags,
+            0o600,
+        )
+
+        try:
+            os.fchmod(descriptor, 0o600)
+
+            return os.fdopen(
+                descriptor,
+                self.mode,
+                encoding=self.encoding,
+                errors=self.errors,
+            )
+        except Exception:
+            os.close(descriptor)
+            raise
+
+
 def configure_pipeline_logger():
     """Configure rotating operational logs."""
     log_dir = BASE_DIR / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+        mode=0o700,
+    )
+    log_dir.chmod(0o700)
 
     logger = logging.getLogger("bucks_r_us.pipeline")
     logger.setLevel(logging.INFO)
@@ -39,7 +76,7 @@ def configure_pipeline_logger():
     )
 
     if not has_file_handler:
-        handler = RotatingFileHandler(
+        handler = SecureRotatingFileHandler(
             log_path,
             maxBytes=1_000_000,
             backupCount=3,
@@ -53,6 +90,29 @@ def configure_pipeline_logger():
         logger.addHandler(handler)
 
     return logger
+
+
+def run_logged_step(command, logger):
+    """Stream subprocess output to the terminal and pipeline log."""
+    with subprocess.Popen(
+        command,
+        cwd=BASE_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    ) as process:
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            logger.info("SUBPROCESS | %s", line.rstrip("\r\n"))
+
+        return_code = process.wait()
+
+    if return_code != 0:
+        raise subprocess.CalledProcessError(
+            return_code,
+            command,
+        )
 
 
 def main():
@@ -98,11 +158,7 @@ def main():
             logger.info("Starting step %d: %s", index, name)
 
         try:
-            subprocess.run(
-                command,
-                cwd=BASE_DIR,
-                check=True,
-            )
+            run_logged_step(command, logger=logger)
         except Exception:
             if logger:
                 logger.exception(
